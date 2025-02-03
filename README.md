@@ -38,7 +38,7 @@ El código original utilizaba colecciones no seguras para hilos, como LinkedList
 Se reemplazó `LinkedList<Cell>` por `CopyOnWriteArrayList<Cell>` para snakeBody.
 Se sincronizó el acceso a los arrays `Board.turbo_boosts`, `Board.jump_pads`, y `Board.food`.
 
-```
+```java
 private CopyOnWriteArrayList<Cell> snakeBody = new CopyOnWriteArrayList<>();
 ```
 
@@ -50,7 +50,7 @@ El código original utilizaba un bucle de espera activa en el método `init` de 
 
 Se reemplazó el bucle de espera activa con un CountDownLatch.
 
-```
+```java
 private void init() {
 for (int i = 0; i != MAX_THREADS; i++) {
 snakes[i] = new Snake(i + 1, spawn[i], i + 1, latch);
@@ -85,7 +85,7 @@ Se eliminó el botón action y se agregaron botones en la interfaz para controla
 
 ### Cambios en SnakeApp:
 
-```
+``` java
 private void init() {
    for (int i = 0; i != MAX_THREADS; i++) {
    snakes[i] = new Snake(i + 1, spawn[i], i + 1, latch);
@@ -129,7 +129,7 @@ Al pausar el juego, se muestra la serpiente viva más larga y la peor serpiente 
 
 ### Cambios en SnakeApp:
 
-```
+``` java
 private void showSnakeStats(JLabel longestLabel, JLabel worstLabel) {
         Snake longestSnake = null;
         Snake worstSnake = null;
