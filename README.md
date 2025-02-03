@@ -1,30 +1,59 @@
 # ARSW-LAB02-PART2
 
-SnakeRace - Mejoras de Concurrencia y Estabilidad
-Este documento describe las mejoras realizadas en el código del juego SnakeRace para garantizar un comportamiento correcto en un entorno multihilo. Se abordaron problemas de concurrencia, condiciones de carrera, uso inadecuado de colecciones y esperas activas innecesarias.
+## Integrantes
 
-Cambios realizados
-1. Eliminación de esperas activas
-   El código original utilizaba un bucle de espera activa en el método init de la clase SnakeApp para verificar si todas las serpientes habían terminado. Este enfoque consume recursos de la CPU innecesariamente.
+- Andrea Valentina Torres Tobar
+- Andres Serrato Camero
 
-Solución:
-Se reemplazó el bucle de espera activa con un CountDownLatch. Este mecanismo permite que el hilo principal espere a que todos los hilos de las serpientes terminen de manera eficiente.
+## Descripción
 
-Cambios en el código:
-Se añadió un CountDownLatch en la clase SnakeApp.
+SnakeRace es una versión autónoma, multi-serpiente del famoso juego 'snake', basado en el proyecto de João Andrade -este ejercicio es un 'fork' del mismo-. En este juego:
 
-Se modificó el método init para usar latch.await() en lugar del bucle de espera activa.
+- N serpientes funcionan de manera autónoma.
+- No existe el concepto de colisión entre las mismas. La única forma de que mueran es estrellándose contra un muro.
+- Hay ratones distribuídos a lo largo del juego. Como en el juego clásico, cada vez que una serpiente se come a un ratón, ésta crece.
+- Existen unos puntos (flechas rojas) que teletransportan a las serpientes.
+- Los rayos hacen que la serpiente aumente su velocidad.
 
-Se pasó el CountDownLatch a cada instancia de Snake para que notifique cuando termine.
+## 2. Problemas Identificados y Soluciones
 
-java
-Copy
-// En SnakeApp
-private CountDownLatch latch = new CountDownLatch(MAX_THREADS);
+### 2.1. Posibles Condiciones de Carrera
 
+Se identificaron varias condiciones de carrera en el código original:
+
+#### Regiones Críticas:
+
+- Acceso a `Board.gameboard`: Varias serpientes pueden intentar modificar la misma celda del tablero al mismo tiempo.
+- Modificación de `Board.turbo_boosts`, `Board.jump_pads`, y `Board.food`: Estas estructuras de datos son accedidas y modificadas por múltiples hilos sin sincronización.
+
+#### Solución:
+Se sincronizó el acceso a `Board.gameboard`, `Board.turbo_boosts`, `Board.jump_pads`, y `Board.food` utilizando bloques `synchronized`.
+
+### 2.2. Uso Inadecuado de Colecciones
+
+El código original utilizaba colecciones no seguras para hilos, como LinkedList y arrays estáticos.
+
+#### Solución:
+
+Se reemplazó `LinkedList<Cell>` por `CopyOnWriteArrayList<Cell>` para snakeBody.
+Se sincronizó el acceso a los arrays `Board.turbo_boosts`, `Board.jump_pads`, y `Board.food`.
+
+```
+private CopyOnWriteArrayList<Cell> snakeBody = new CopyOnWriteArrayList<>();
+```
+
+### 2.3. Uso Innecesario de Esperas Activas
+
+El código original utilizaba un bucle de espera activa en el método `init` de la clase SnakeApp.
+
+### Solución:
+
+Se reemplazó el bucle de espera activa con un CountDownLatch.
+
+```
 private void init() {
 for (int i = 0; i != MAX_THREADS; i++) {
-snakes[i] = new Snake(i + 1, spawn[i], i + 1, latch); // Pasar el latch
+snakes[i] = new Snake(i + 1, spawn[i], i + 1, latch);
 snakes[i].addObserver(board);
 thread[i] = new Thread(snakes[i]);
 thread[i].start();
@@ -32,77 +61,120 @@ thread[i].start();
 
     frame.setVisible(true);
 
-    try {
-        latch.await(); // Esperar a que todas las serpientes terminen
-    } catch (InterruptedException e) {
-        e.printStackTrace();
+    new Thread(new Runnable() {
+        @Override
+        public void run() {
+            try {
+                latch.await();
+                System.out.println("Todas las serpientes han terminado.");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }).start();
+}
+```
+### ¿Qué es un CountDownLatch?
+Un CountDownLatch es un tipo de sincronización que permite a un hilo esperar hasta que un conjunto de operaciones en otros hilos se completen. Se inicializa con un contador, y cada hilo que completa una operación decrementa el contador. Cuando el contador llega a cero, el hilo que espera es liberado.
+
+## 3. Funcionalidades Adicionales
+
+### 3.1. Iniciar/Pausar/Reanudar el Juego
+
+Se eliminó el botón action y se agregaron botones en la interfaz para controlar el juego: Iniciar, Pausar, y Reanudar.
+
+### Cambios en SnakeApp:
+
+```
+private void init() {
+   for (int i = 0; i != MAX_THREADS; i++) {
+   snakes[i] = new Snake(i + 1, spawn[i], i + 1, latch);
+   snakes[i].addObserver(board);
+   thread[i] = new Thread(snakes[i]);
+   thread[i].start();
+   }
+   
+       frame.setVisible(true);
+   
+      //Se inicia un hilo que espera a que todas las serpientes terminen
+       new Thread(new Runnable() {
+           @Override
+           public void run() {
+               try {
+                   latch.await();
+                   System.out.println("Todas las serpientes han terminado.");
+               } catch (InterruptedException e) {
+                   e.printStackTrace();
+               }
+           }
+       }).start();
+   }
+   
+   private void pauseGame() {
+      for (Snake snake : snakes) {
+      snake.pause();
+      }
+      showSnakeStats();
+}
+
+private void resumeGame() {
+   for (Snake snake : snakes) {
+   snake.resume();
+   }
+}
+```
+### 3.2. Mostrar Estadísticas al Pausar
+
+Al pausar el juego, se muestra la serpiente viva más larga y la peor serpiente (la que murió primero).
+
+### Cambios en SnakeApp:
+
+```
+private void showSnakeStats(JLabel longestLabel, JLabel worstLabel) {
+        Snake longestSnake = null;
+        Snake worstSnake = null;
+
+        for (Snake snake : snakes) {
+            if (!snake.isSnakeEnd()) {
+                if (longestSnake == null || snake.getBody().size() > longestSnake.getBody().size()) {
+                    longestSnake = snake;
+                }
+            } else {
+                if (worstSnake == null || snake.getDeathTime() < worstSnake.getDeathTime()) {
+                    worstSnake = snake;
+                }
+            }
+        }
+
+        if (longestSnake != null) {
+            longestLabel.setText("Longest snake: " + "snake " + longestSnake.getIdt() + " (Length: " + longestSnake.getBody().size() + ")");
+        } else {
+            longestLabel.setText("Longest snake: N/A");
+        }
+
+        if (worstSnake != null) {
+            worstLabel.setText("Worst snake: " + "snake " + worstSnake.getIdt() + " (Death Time: " + (worstSnake.getDeathTime() / 1000) + " ms)");
+        } else {
+            worstLabel.setText("Worst snake: N/A");
+        }
     }
-}
+```
 
-// En Snake
-@Override
-public void run() {
-while (!snakeEnd) {
-snakeCalc();
-setChanged();
-notifyObservers();
-try {
-Thread.sleep(hasTurbo ? 500 / 3 : 500);
-} catch (InterruptedException e) {
-e.printStackTrace();
-}
-}
-latch.countDown(); // Notificar que la serpiente ha terminado
-}
-2. Sincronización de recursos compartidos
-   El código original accedía y modificaba recursos compartidos (como Board.gameboard, Board.turbo_boosts, Board.jump_pads, y Board.food) sin sincronización, lo que podía causar condiciones de carrera.
+### Demostración
 
-Solución:
-Se sincronizó el acceso a estos recursos utilizando bloques synchronized y se cambiaron las colecciones no seguras para hilos por versiones seguras.
+1. Se inicia el juego, las serpientes iniciarán sin moverse hasta que se presione el botón de start, las estadisticas iniciarán en N/A.
 
-Cambios en el código:
-Se reemplazó LinkedList<Cell> por CopyOnWriteArrayList<Cell> para snakeBody.
+![img.png](src/main/resources/Img/img.png)
 
-Se añadieron bloques synchronized para proteger el acceso a Board.gameboard, Board.turbo_boosts, Board.jump_pads, y Board.food.
+2. Se presiona el botón de start y las serpientes comienzan a moverse y se habilita el botón de pause.
 
-java
-Copy
-// En Snake
-private CopyOnWriteArrayList<Cell> snakeBody = new CopyOnWriteArrayList<>();
+![img.png](src/main/resources/Img/img2.png)
 
-private void checkIfBarrier(Cell newCell) {
-synchronized (Board.gameboard) { // Sincronizar acceso al tablero
-if (Board.gameboard[newCell.getX()][newCell.getY()].isBarrier()) {
-System.out.println("[" + idt + "] " + "CRASHED AGAINST BARRIER " + newCell.toString());
-snakeEnd = true;
-}
-}
-}
+3. Se presiona el botón de pause y las serpientes se detienen, habilita el botón de resume y actualiza las estadísticas
 
-private void checkIfTurboBoost(Cell newCell) {
-synchronized (Board.turbo_boosts) { // Sincronizar acceso a turbo_boosts
-if (Board.gameboard[newCell.getX()][newCell.getY()].isTurbo_boost()) {
-for (int i = 0; i != Board.NR_TURBO_BOOSTS; i++) {
-if (Board.turbo_boosts[i] == newCell) {
-Board.turbo_boosts[i].setTurbo_boost(false);
-Board.turbo_boosts[i] = new Cell(-5, -5);
-hasTurbo = true;
-}
-}
-System.out.println("[" + idt + "] " + "GETTING TURBO BOOST " + newCell.toString());
-}
-}
-}
-3. Uso de colecciones seguras para hilos
-   El código original utilizaba colecciones no seguras para hilos, como LinkedList y arrays estáticos, lo que podía causar inconsistencias en un entorno multihilo.
+![img.png](src/main/resources/Img/img3.png)
 
-Solución:
-Se cambiaron las colecciones no seguras por versiones seguras para hilos, como CopyOnWriteArrayList.
+4. Se presiona el botón de resume y las serpientes continúan moviéndose, activando el botón de pause.
 
-Cambios en el código:
-Se reemplazó LinkedList<Cell> por CopyOnWriteArrayList<Cell> en la clase Snake.
+![img.png](src/main/resources/Img/img4.png)
 
-java
-Copy
-// En Snake
-private CopyOnWriteArrayList<Cell> snakeBody = new CopyOnWriteArrayList<>();
