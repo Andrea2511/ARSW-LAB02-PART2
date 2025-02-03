@@ -1,0 +1,21 @@
+1. Posibles condiciones de carrera:
+
+    - Acceso concurrente a Board.gameboard: Múltiples serpientes pueden acceder y modificar las celdas del tablero al mismo tiempo (por ejemplo, al comer comida, usar turbo boosts, o saltar), lo que podría causar inconsistencias.
+
+    - Modificación concurrente de Board.food, Board.jump_pads, Board.turbo_boosts: Estos arrays son modificados por múltiples hilos cuando una serpiente recoge un turbo boost o un salto. Si dos serpientes intentan recoger el mismo objeto al mismo tiempo, podría ocurrir una condición de carrera.
+
+    - Uso de snakeBody sin sincronización: La lista snakeBody de cada serpiente es modificada en el método snakeCalc. Si un hilo intenta modificar la lista mientras otro la está leyendo (por ejemplo, en checkIfOwnBody), podría ocurrir una condición de carrera.
+
+
+2. Uso inadecuado de colecciones considerando su manejo concurrente:
+
+    - LinkedList<Cell> snakeBody: Esta lista se accede y modifica sin ninguna sincronización, lo que podría causar errores si se intenta modificar mientras otra acción la está recorriendo.
+
+    - Modificación de Board sin bloqueos: Se cambian propiedades de Board.gameboard, Board.food, Board.jump_pads y Board.turbo_boosts sin garantizar exclusión mutua.
+
+
+3. Uso innecesario de esperas activas:
+
+    - Bucle while (true) en init(): En SnakeApp.init(), hay un bucle que constantemente verifica si todas las serpientes han terminado. Por lo que hay una espera activa.
+
+    - Bucle while en changeDirection: Se realizan verificaciones repetitivas sin pausas adecuadas, lo que puede generar un alto consumo de CPU.

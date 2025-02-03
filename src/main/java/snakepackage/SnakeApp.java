@@ -3,15 +3,16 @@ package snakepackage;
 import java.awt.Dimension;
 import java.awt.Toolkit;
 
-import javax.swing.JFrame;
+import javax.swing.*;
 
 import enums.GridSize;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.concurrent.CountDownLatch;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.swing.JButton;
-import javax.swing.JPanel;
 
 /**
  * @author jd-
@@ -19,6 +20,9 @@ import javax.swing.JPanel;
  */
 public class SnakeApp {
 
+    private JButton startButton;
+    private JButton pauseButton;
+    private JButton resumeButton;
     private static SnakeApp app;
     public static final int MAX_THREADS = 8;
     Snake[] snakes = new Snake[MAX_THREADS];
@@ -37,6 +41,9 @@ public class SnakeApp {
     private static Board board;
     int nr_selected = 0;
     Thread[] thread = new Thread[MAX_THREADS];
+    private CountDownLatch latch = new CountDownLatch(MAX_THREADS);
+    private JLabel longestLabel;
+    private JLabel worstLabel;
 
     public SnakeApp() {
         Dimension dimension = Toolkit.getDefaultToolkit().getScreenSize();
@@ -49,15 +56,106 @@ public class SnakeApp {
         frame.setLocation(dimension.width / 2 - frame.getWidth() / 2,
                 dimension.height / 2 - frame.getHeight() / 2);
         board = new Board();
-        
-        
+
+
         frame.add(board,BorderLayout.CENTER);
-        
+
+        JPanel statsPanel = new JPanel();
+        statsPanel.setLayout(new FlowLayout());
+        longestLabel = new JLabel("Longest snake: N/A");
+        worstLabel = new JLabel("Worst snake: N/A");
+        statsPanel.add(longestLabel);
+        statsPanel.add(worstLabel);
+        frame.add(statsPanel, BorderLayout.NORTH);
+
+
+        startButton = new JButton("Iniciar");
+        pauseButton = new JButton("Pausar");
+        resumeButton = new JButton("Reanudar");
+
+        // disable buttons
+        pauseButton.setEnabled(false);
+        resumeButton.setEnabled(false);
+
         JPanel actionsBPabel=new JPanel();
         actionsBPabel.setLayout(new FlowLayout());
-        actionsBPabel.add(new JButton("Action "));
+        actionsBPabel.add(startButton);
+        actionsBPabel.add(pauseButton);
+        actionsBPabel.add(resumeButton);
         frame.add(actionsBPabel,BorderLayout.SOUTH);
 
+        startButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                start();
+                startButton.setEnabled(false);
+                pauseButton.setEnabled(true);
+            }
+        });
+
+        pauseButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                pauseGame();
+                pauseButton.setEnabled(false);
+                resumeButton.setEnabled(true);
+            }
+        });
+
+        resumeButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                resumeGame();
+                resumeButton.setEnabled(false);
+                pauseButton.setEnabled(true);
+            }
+        });
+
+    }
+
+    private void pauseGame() {
+        for (Snake snake : snakes) {
+            snake.pause();
+        }
+        showSnakeStats(longestLabel, worstLabel);
+    }
+
+    private void resumeGame() {
+        for (Snake snake : snakes) {
+            snake.resume();
+        }
+    }
+
+    /**
+     * Show the longest snake and the worst snake
+     */
+    private void showSnakeStats(JLabel longestLabel, JLabel worstLabel) {
+        Snake longestSnake = null;
+        Snake worstSnake = null;
+
+        for (Snake snake : snakes) {
+            if (!snake.isSnakeEnd()) {
+                if (longestSnake == null || snake.getBody().size() > longestSnake.getBody().size()) {
+                    longestSnake = snake;
+                }
+            } else {
+                if (worstSnake == null || snake.getDeathTime() < worstSnake.getDeathTime()) {
+                    worstSnake = snake;
+                }
+            }
+        }
+
+        if (longestSnake != null) {
+            longestLabel.setText("Longest snake: " + "snake " + longestSnake.getIdt() + " (Length: " + longestSnake.getBody().size() + ")");
+        } else {
+            longestLabel.setText("Longest snake: N/A");
+        }
+
+        if (worstSnake != null) {
+            worstLabel.setText("Worst snake: " + "snake " + worstSnake.getIdt() + " (Death Time: " + (worstSnake.getDeathTime() / 1000) + " ms)");
+        } else {
+            worstLabel.setText("Worst snake: N/A");
+        }
     }
 
     public static void main(String[] args) {
@@ -67,38 +165,34 @@ public class SnakeApp {
 
     private void init() {
         
-        
-        
         for (int i = 0; i != MAX_THREADS; i++) {
             
-            snakes[i] = new Snake(i + 1, spawn[i], i + 1);
+            snakes[i] = new Snake(i + 1, spawn[i], i + 1, latch);
             snakes[i].addObserver(board);
             thread[i] = new Thread(snakes[i]);
-            thread[i].start();
         }
 
         frame.setVisible(true);
 
-            
-        while (true) {
-            int x = 0;
-            for (int i = 0; i != MAX_THREADS; i++) {
-                if (snakes[i].isSnakeEnd() == true) {
-                    x++;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    latch.await(); 
+                    System.out.println("Todas las serpientes han terminado.");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
-            if (x == MAX_THREADS) {
-                break;
-            }
-        }
+        }).start();
 
+    }
 
-        System.out.println("Thread (snake) status:");
+    private void start(){
         for (int i = 0; i != MAX_THREADS; i++) {
-            System.out.println("["+i+"] :"+thread[i].getState());
+            thread[i].start();
+            System.out.println("Serpiente " + (i + 1) + " iniciada.");
         }
-        
-
     }
 
     public static SnakeApp getApp() {
